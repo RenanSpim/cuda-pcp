@@ -67,5 +67,19 @@ int main() {
         contaminateAll(i);
         healAll(i);
         removeAllDead(i);
+
+        if (i % 2 == 0) {
+            for (int x = 0; x < N; x++) {
+                for (int y = 0; y < M; y++) {
+                    matI[x][y] = matP[x][y];
+                }
+            }
+        } else {
+            for (int x = 0; x < N; x++) {
+                for (int y = 0; y < M; y++) {
+                    matP[x][y] = matI[x][y];
+                }
+            }
+        }
     }
 }
