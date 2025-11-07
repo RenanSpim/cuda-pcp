@@ -8,14 +8,14 @@
 int matI[N][M];
 int matP[N][M];
 
-void heal(int **mat, int x, int y) {
+void heal(int mat[N][M], int x, int y) {
     int val = rand() % 10000;
 
     if (mat[x][y] == -1)
         mat[x][y] = val < 1000 ? 1 : val < 4000 ? -1 : -2;
 }
 
-void contaminate(int **mat, int x, int y) {
+void contaminate(int mat[N][M], int x, int y) {
     if (mat[x][y] != 1) return;
 
     if (
@@ -28,7 +28,7 @@ void contaminate(int **mat, int x, int y) {
     }
 }
 
-void removeDead(int **mat, int x, int y) {
+void removeDead(int mat[N][M], int x, int y) {
     if (mat[x][y] == -2)
         mat[x][y] = -3;
 
@@ -37,25 +37,49 @@ void removeDead(int **mat, int x, int y) {
 }
 
 void contaminateAll(int x) {
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < M; j++) {
-            contaminate(x % 2 == 0 ? matP : matI, i, j);
+    if (x % 2 == 0) {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                contaminate(matP, i, j);
+            }
+        }
+    } else {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                contaminate(matI, i, j);
+            }
         }
     }
 }
 
 void healAll(int x) {
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < M; j++) {
-            heal(x % 2 == 0 ? matP : matI, i, j);
+    if (x % 2 == 0) {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                heal(matP, i, j);
+            }
+        }
+    } else {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                heal(matI, i, j);
+            }
         }
     }
 }
 
 void removeAllDead(int x) {
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < M; j++) {
-            removeDead(x % 2 == 0 ? matP : matI, i, j);
+    if (x % 2 == 0) {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                removeDead(matP, i, j);
+            }
+        }
+    } else {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < M; j++) {
+                removeDead(matI, i, j);
+            }
         }
     }
 }
