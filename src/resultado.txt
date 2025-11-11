@@ -1,0 +1,10 @@
+Resultado da Simulação
+======================
+
+Total de mortos: 0
+Total de sobreviventes: 33
+  - Saudáveis: 24
+  - Contaminados: 9
+
+Total de células vazias: 167
+Total de células: 200
