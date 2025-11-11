@@ -2,20 +2,16 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define N 10
-#define M 20
+int N, M, **matI, **matP;
 
-int matI[N][M];
-int matP[N][M];
-
-void heal(int mat[N][M], int x, int y) {
+void heal(int **mat, int x, int y) {
     int val = rand() % 10000;
 
     if (mat[x][y] == -1)
         mat[x][y] = val < 1000 ? 1 : val < 4000 ? -1 : -2;
 }
 
-void contaminate(int mat[N][M], int x, int y) {
+void contaminate(int **mat, int x, int y) {
     if (mat[x][y] != 1) return;
 
     if (
@@ -28,7 +24,7 @@ void contaminate(int mat[N][M], int x, int y) {
     }
 }
 
-void removeDead(int mat[N][M], int x, int y) {
+void removeDead(int **mat, int x, int y) {
     if (mat[x][y] == -2)
         mat[x][y] = -3;
 
@@ -84,8 +80,37 @@ void removeAllDead(int x) {
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     srand(time(NULL));
+    FILE *file;
+    
+    if (argc != 2) {
+        printf("Usage: %s <filename>\n", argv[0]);
+        return 1;
+    }
+
+    file = fopen(argv[1], "r");
+
+    if (file == NULL) {
+        printf("Error opening file %s\n", argv[1]);
+        return 2;
+    }
+
+    fscanf(file, "%d %d", &N, &M);
+
+    matI = (int **)malloc(N * sizeof(int *));
+    matP = (int **)malloc(N * sizeof(int *));
+
+    for (int i = 0; i < N; i++) {
+        matI[i] = (int *)malloc(M * sizeof(int));
+        matP[i] = (int *)malloc(M * sizeof(int));
+    }
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < M; j++) {
+            fscanf(file, "%d", &matP[i][j]);
+        }
+    }
 
     for (int i = 0; i < N*M; i++) {
         contaminateAll(i);
@@ -106,4 +131,7 @@ int main() {
             }
         }
     }
+    
+    fclose(file);
+    return 0;
 }
