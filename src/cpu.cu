@@ -3,7 +3,7 @@
 #include <time.h>
 #include "operations.h"
 
-int N, M, **matI, **matP;
+int N, M, *matI, *matP;
 
 void contaminateAll(int x) {
     if (x % 2 == 0) {
@@ -71,17 +71,12 @@ int main(int argc, char *argv[]) {
 
     fscanf(file, "%d %d", &N, &M);
 
-    matI = (int **)malloc(N * sizeof(int *));
-    matP = (int **)malloc(N * sizeof(int *));
-
-    for (int i = 0; i < N; i++) {
-        matI[i] = (int *)malloc(M * sizeof(int));
-        matP[i] = (int *)malloc(M * sizeof(int));
-    }
+    matI = (int **)malloc(N * M * sizeof(int *));
+    matP = (int **)malloc(N * M * sizeof(int *));
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
-            fscanf(file, "%d", &matP[i][j]);
+            fscanf(file, "%d", &matP[i * M + j]);
         }
     }
 
@@ -93,13 +88,13 @@ int main(int argc, char *argv[]) {
         if (i % 2 == 0) {
             for (int x = 0; x < N; x++) {
                 for (int y = 0; y < M; y++) {
-                    matI[x][y] = matP[x][y];
+                    matI[x * M + y] = matP[x * M + y];
                 }
             }
         } else {
             for (int x = 0; x < N; x++) {
                 for (int y = 0; y < M; y++) {
-                    matP[x][y] = matI[x][y];
+                    matP[x * M + y] = matI[x * M + y];
                 }
             }
         }
