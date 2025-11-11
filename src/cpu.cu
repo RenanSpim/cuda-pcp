@@ -71,8 +71,8 @@ int main(int argc, char *argv[]) {
 
     fscanf(file, "%d %d", &N, &M);
 
-    matI = (int **)malloc(N * M * sizeof(int *));
-    matP = (int **)malloc(N * M * sizeof(int *));
+    matI = (int *)malloc(N * M * sizeof(int));
+    matP = (int *)malloc(N * M * sizeof(int));
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
