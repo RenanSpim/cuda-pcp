@@ -13,49 +13,57 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
     }
 }
 
-__device__ void heal(int **mat, int x, int y, curandState *state){
-    if (mat[x][y] != -1) return;
+__device__ void heal(int *matIn, int *matOut,int x, curandState *state){
+    if (matIn[x] != -1){
+        matOut[x] = matIn[x];
+        return;
+    }
     
     // Gera número aleatório de 0 a 9999 usando cuRAND
     unsigned int val = curand(state) % 10000;
     
-    if (val < 1000)         
-        mat[x][y] = 1;      // Fica saudável
+    if (val < 1000)
+        matOut[x] = 1;      // Fica saudável
     else if (val < 4000)    
-        mat[x][y] = -1;     // Continua infectado
+        matOut[x] = -1;     // Continua infectado
     else                    
-        mat[x][y] = -2;     // Morre
+        matOut[x] = -2;     // Morre
 }
 
-__device__ void contaminate(int **mat, int x, int y, int N, int M){
-    if (mat[x][y]!=1) return;
+__device__ void contaminate(int *matIn, int *matOut, int x, int N, int M){
+    if (matIn[x]!=1) {
+        matOut[x] = matIn[x];  // Se não é saudável, mantém o valor
+        return;
+    }
 
     if
     (
-        x > 0       && mat[x-1][y] < 0 ||
-        x < (N-1)   && mat[x+1][y] < 0 ||
-        y > 0       && mat[x][y-1] < 0 ||
-        y < (M-1)   && mat[x][y+1] < 0
+        (x%M > 0       && matIn[x-1] < 0) ||
+        (x%M < M-1     && matIn[x+1] < 0) ||
+        (x/M < N-1     && matIn[x+M] < 0) ||
+        (x/M > 0       && matIn[x-M] < 0)
     ){
-        mat[x][y] = -1;
+        matOut[x] = -1;  // Contamina
+    }
+    else {
+        matOut[x] = matIn[x];  // Mantém saudável se não há vizinho infectado
     }
 }
 
-__device__ void removeDead(int **mat, int x, int y){
-    if(mat[x][y]==-2)
-        mat[x][y]=-3;
-    else if(mat[x][y]==-3)
-        mat[x][y]=0;
+__device__ void removeDead(int *matIn, int *matOut, int x){
+    if(matIn[x]==-2)
+        matOut[x]=-3;
+    else if(matIn[x]==-3)
+        matOut[x]=0;
+    else
+        matOut[x]=matIn[x];  // Mantém o valor
 }
 
-__global__ void kernel(int **matP, int **matI, int N, int M, int max_iter, curandState *states){
+__global__ void kernel(int *matP, int *matI, int N, int M, int max_iter, curandState *states){
     
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
-
-    int x = (int)(tid / N);
-    int y = (int)(tid % M);
 
     // Estado local do gerador aleatório para esta thread
     curandState localState = states[tid];
@@ -64,29 +72,29 @@ __global__ void kernel(int **matP, int **matI, int N, int M, int max_iter, curan
 
     for(int i=0;i<max_iter;i++){
         if(parity==0){
-            contaminate(matP, x, y, N, M);
+            // Lê de matP, processa, escreve em matI
+            contaminate(matP, matI, tid, N, M);
             __syncthreads();
 
-            heal(matP, x, y, &localState);
+            heal(matP, matI, tid, &localState);
             __syncthreads();
 
-            removeDead(matP, x, y);
+            removeDead(matP, matI, tid);
             __syncthreads();
 
-            matI[x][y] = matP[x][y];
             parity=1;
         }
         else{
-            contaminate(matI, x, y, N, M);
+            // Lê de matI, processa, escreve em matP
+            contaminate(matI, matP, tid, N, M);
             __syncthreads();
 
-            heal(matI, x, y, &localState);
+            heal(matI, matP, tid, &localState);
             __syncthreads();
 
-            removeDead(matI, x, y);
+            removeDead(matI, matP, tid);
             __syncthreads();
 
-            matP[x][y] = matI[x][y];
             parity=0;
         }
 
@@ -114,28 +122,25 @@ int main(void){
     fscanf(fileInput, "%d", &M);
 
     // Declarando matrizes no host
-    int h_matI[N][M] = {0};
-    int h_matP[N][M] = {0};
+    int h_matI[N*M] = {0};
+    int h_matP[N*M] = {0};
 
     // Atribuindo valores as matrizes do host
-    for(int i=0;i<N;i++){
-        for(int j=0;j<M;j++){
-            fscanf(fileInput, "%d", &h_matP[i][j]);
-        }
+    for(int i=0;i<N*M;i++){
+        fscanf(fileInput, "%d", &h_matP[i]);
     }
     fclose(fileInput);
 
     // Printando a matriz inicial (DEBUG)
-    for(int i=0;i<N;i++){
-        for(int j=0;j<M;j++){
-            printf("\t[%d] ", h_matP[i][j]);
-        }
-        printf("\n");
+    for(int i=0;i<N*M;i++){
+        printf("\t[%d] ", h_matP[i]);
+        if((i+1)%M==0)
+            printf("\n");
     }
     // ----------------------------------------------------
 
     // Declarando matrizes no device
-    int **d_matI, **d_matP;
+    int *d_matI, *d_matP;
     curandState *d_states;
     cudaError_t err;
 
@@ -158,11 +163,7 @@ int main(void){
     }
 
     // Copiando matrizes do host para o device
-    err = cudaMemcpy(d_matI, h_matI, N*M*sizeof(int), cudaMemcpyHostToDevice);
-    if(err != cudaSuccess){
-        printf("Erro na copia de d_matI: %s\n", cudaGetErrorString(err));
-        return 1;
-    }
+    // d_matI não precisa ser copiado, será preenchido na primeira iteração
     err = cudaMemcpy(d_matP, h_matP, N*M*sizeof(int), cudaMemcpyHostToDevice);
     if(err != cudaSuccess){
         printf("Erro na copia de d_matP: %s\n", cudaGetErrorString(err));
@@ -188,22 +189,31 @@ int main(void){
         printf("Erro na execucao do kernel: %s\n", cudaGetErrorString(err));
         return 1;
     }
-
-    // Retornando os resultados ao host
-    err = cudaMemcpy(h_matP, d_matP, N*M*sizeof(int), cudaMemcpyDeviceToHost);
-    if(err != cudaSuccess){
-        printf("Erro na copia de d_matP para h_matP: %s\n", cudaGetErrorString(err));
-        return 1;
-    }   
     
-    printf("Simulacao concluida!\n");
+    // Verifica onde o resultado final ficou baseado no número de iterações
+    int max_iter = N*M;
+    if(max_iter % 2 == 0){
+        // Número par de iterações: resultado em matP
+        err = cudaMemcpy(h_matP, d_matP, N*M*sizeof(int), cudaMemcpyDeviceToHost);
+        if(err != cudaSuccess){
+            printf("Erro na copia de d_matP para h_matP: %s\n", cudaGetErrorString(err));
+            return 1;
+        }
+    }
+    else{
+        // Número ímpar de iterações: resultado em matI
+        err = cudaMemcpy(h_matP, d_matI, N*M*sizeof(int), cudaMemcpyDeviceToHost);
+        if(err != cudaSuccess){
+            printf("Erro na copia de d_matI para h_matP: %s\n", cudaGetErrorString(err));
+            return 1;
+        }
+    }
 
     // Printando a matriz final (DEBUG)
-    for(int i=0;i<N;i++){
-        for(int j=0;j<M;j++){
-            printf("\t[%d] ", h_matP[i][j]);
-        }
-        printf("\n");
+    for(int i=0;i<N*M;i++){
+        printf("\t[%d] ", h_matP[i]);
+        if((i+1)%M==0)
+            printf("\n");
     }
     // -----------------------------------------------------
 
