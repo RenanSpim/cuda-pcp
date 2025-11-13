@@ -50,17 +50,23 @@ __device__ void contaminate(int *matIn, int *matOut, int x, int N, int M){
     }
 }
 
-__device__ void removeDead(int *matIn, int *matOut, int x){
-    if(matIn[x]==-2)
+__device__ void removeDead(int *matIn, int *matOut, int x, int *deaths){
+    if(matIn[x]==-2){
         matOut[x]=-3;
+        atomicAdd(deaths, 1);
+    }
     else if(matIn[x]==-3)
         matOut[x]=0;
     else
         matOut[x]=matIn[x];  // Mantém o valor
 }
 
-__global__ void kernel(int *matP, int *matI, int N, int M, int max_iter, curandState *states){
+__global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
     
+    // Inicializa contadores
+    *deaths = 0;
+    *survivors = 0;
+
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
@@ -79,7 +85,7 @@ __global__ void kernel(int *matP, int *matI, int N, int M, int max_iter, curandS
             heal(matP, matI, tid, &localState);
             __syncthreads();
 
-            removeDead(matP, matI, tid);
+            removeDead(matP, matI, tid, deaths);
             __syncthreads();
 
             parity=1;
@@ -92,12 +98,21 @@ __global__ void kernel(int *matP, int *matI, int N, int M, int max_iter, curandS
             heal(matI, matP, tid, &localState);
             __syncthreads();
 
-            removeDead(matI, matP, tid);
+            removeDead(matI, matP, tid, deaths);
             __syncthreads();
 
             parity=0;
         }
 
+        __syncthreads();
+        if((N*M) % 2 == 0){
+            if(matP[tid] != 0)
+                atomicAdd(survivors, 1);
+        }
+        else{
+            if(matI[tid] != 0)
+                atomicAdd(survivors, 1);
+        }
         __syncthreads();
     }
     
@@ -109,9 +124,11 @@ int main(void){
     
     // Declarando variaveis de dimensoes
     int N, M;
+    int *h_survivors = (int*)malloc(sizeof(int));
+    int *h_deaths = (int*)malloc(sizeof(int));
 
     // Abrindo arquivo da matriz de entrada
-    FILE *fileInput = fopen("matriz_inicial.txt", "r");
+    FILE *fileInput = fopen("/home/mario/computaria/2sem-2025/pcp/cuda-pcp/src/matriz_inicial.txt", "r");
     if(fileInput == NULL){
         printf("Erro ao abrir o arquivo de entrada.\n");
         return 1;
@@ -122,14 +139,13 @@ int main(void){
     fscanf(fileInput, "%d", &M);
 
     // Declarando matrizes no host
-    int h_matI[N*M] = {0};
-    int h_matP[N*M] = {0};
+    int *h_matP = (int*)malloc(N*M*sizeof(int));
 
     // Atribuindo valores as matrizes do host
     for(int i=0;i<N*M;i++){
         fscanf(fileInput, "%d", &h_matP[i]);
     }
-    fclose(fileInput);
+    fclose(fileInput);  ;
 
     // Printando a matriz inicial (DEBUG)
     for(int i=0;i<N*M;i++){
@@ -137,10 +153,10 @@ int main(void){
         if((i+1)%M==0)
             printf("\n");
     }
-    // ----------------------------------------------------
+    // ----------------------------------------------------;
 
-    // Declarando matrizes no device
-    int *d_matI, *d_matP;
+    // Declarando variaveis no device e alocando memória
+    int *d_matI, *d_matP, *deaths, *survivors;
     curandState *d_states;
     cudaError_t err;
 
@@ -154,7 +170,17 @@ int main(void){
         printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    
+    err = cudaMalloc(&deaths, sizeof(int));
+    if(err != cudaSuccess){
+        printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMalloc(&survivors, sizeof(int));
+    if(err != cudaSuccess){
+        printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+
     // Aloca memória para os estados do cuRAND (um estado por thread)
     err = cudaMalloc(&d_states, N*M*sizeof(curandState));
     if(err != cudaSuccess){
@@ -182,17 +208,17 @@ int main(void){
 
     // Executa o kernel principal
     printf("Executando simulacao...\n");
-    kernel<<<1, N*M>>>(d_matP, d_matI, N, M, N*M, d_states);
+    kernel<<<1, N*M>>>(d_matP, d_matI, deaths, survivors, N, M, N*M, d_states);
 
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
         printf("Erro na execucao do kernel: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    
+
     // Verifica onde o resultado final ficou baseado no número de iterações
-    int max_iter = N*M;
-    if(max_iter % 2 == 0){
+    if((N*M) % 2 == 0){
+        printf("ENTROU NA PAR\n");
         // Número par de iterações: resultado em matP
         err = cudaMemcpy(h_matP, d_matP, N*M*sizeof(int), cudaMemcpyDeviceToHost);
         if(err != cudaSuccess){
@@ -201,6 +227,7 @@ int main(void){
         }
     }
     else{
+        printf("ENTROU NA IMPAR\n");
         // Número ímpar de iterações: resultado em matI
         err = cudaMemcpy(h_matP, d_matI, N*M*sizeof(int), cudaMemcpyDeviceToHost);
         if(err != cudaSuccess){
@@ -209,12 +236,26 @@ int main(void){
         }
     }
 
+    err = cudaMemcpy(h_survivors, survivors, sizeof(int), cudaMemcpyDeviceToHost);
+    if(err != cudaSuccess){
+        printf("Erro na copia de sobreviventes: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMemcpy(h_deaths, deaths, sizeof(int), cudaMemcpyDeviceToHost);
+    if(err != cudaSuccess){
+        printf("Erro na copia de mortes: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+
     // Printando a matriz final (DEBUG)
     for(int i=0;i<N*M;i++){
         printf("\t[%d] ", h_matP[i]);
         if((i+1)%M==0)
             printf("\n");
     }
+
+    printf("Numéro de mortes: %d\n", *h_deaths);
+    printf("Numéro de sobreviventes: %d\n", *h_survivors);
     // -----------------------------------------------------
 
     // Libera memória do device
