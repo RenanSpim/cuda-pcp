@@ -20,40 +20,12 @@ __device__ void heal(int *matIn, int *matOut,int x, curandState *state){
     }
     
     // Gera número aleatório de 0 a 9999 usando cuRAND
-    unsigned int val = curand(state) % 10000;
     
-    if (val < 1000)
-        matOut[x] = 1;      // Fica saudável
-    else if (val < 4000)    
-        matOut[x] = -1;     // Continua infectado
-    else                    
-        matOut[x] = -2;     // Morre
-}
-
-__device__ void contaminate(int *matIn, int *matOut, int x, int N, int M){
-    if (matIn[x]!=1) {
-        matOut[x] = matIn[x];  // Se não é saudável, mantém o valor
-        return;
-    }
-
-    if
-    (
-        (x%M > 0       && matIn[x-1] < 0) ||
-        (x%M < M-1     && matIn[x+1] < 0) ||
-        (x/M < N-1     && matIn[x+M] < 0) ||
-        (x/M > 0       && matIn[x-M] < 0)
-    ){
-        matOut[x] = -1;  // Contamina
-    }
-    else {
-        matOut[x] = matIn[x];  // Mantém saudável se não há vizinho infectado
-    }
 }
 
 __device__ void removeDead(int *matIn, int *matOut, int x, int *deaths){
     if(matIn[x]==-2){
-        matOut[x]=-3;
-        atomicAdd(deaths, 1);
+        
     }
     else if(matIn[x]==-3)
         matOut[x]=0;
@@ -63,57 +35,103 @@ __device__ void removeDead(int *matIn, int *matOut, int x, int *deaths){
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
     
-    // Inicializa contadores
-    *deaths = 0;
-    *survivors = 0;
+    // Problema 2: Corrigido - Apenas a thread 0 inicializa
+    if (threadIdx.x == 0) {
+        *deaths = 0;
+    }
+    __syncthreads();
 
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
 
-    // Estado local do gerador aleatório para esta thread
+    // Estado local do gerador aleatório
     curandState localState = states[tid];
+    int parity = 0;
 
-    int parity=0;
+    // Ponteiros para matriz de entrada e saída
+    int *matIn = matP;
+    int *matOut = matI;
 
-    for(int i=0;i<max_iter;i++){
-        if(parity==0){
-            // Lê de matP, processa, escreve em matI
-            contaminate(matP, matI, tid, N, M);
-            __syncthreads();
-
-            heal(matP, matI, tid, &localState);
-            __syncthreads();
-
-            removeDead(matP, matI, tid, deaths);
-            __syncthreads();
-
-            parity=1;
-        }
-        else{
-            // Lê de matI, processa, escreve em matP
-            contaminate(matI, matP, tid, N, M);
-            __syncthreads();
-
-            heal(matI, matP, tid, &localState);
-            __syncthreads();
-
-            removeDead(matI, matP, tid, deaths);
-            __syncthreads();
-
-            parity=0;
+    for(int i=0; i<max_iter; i++){
+        
+        // Determina a matriz de entrada e saída para esta iteração
+        if (parity == 0) {
+            matIn = matP;
+            matOut = matI;
+        } else {
+            matIn = matI;
+            matOut = matP;
         }
 
+        // Garante que todas as threads definiram seus ponteiros
+        __syncthreads(); 
+
+        // --- Problema 1: Corrigido - Lógica de estado mesclada ---
+        
+        int in_val = matIn[tid];
+        int out_val = in_val; // Valor padrão é manter o estado
+
+        // Lógica de Contaminate
+        if (in_val == 1) { // Saudável
+            if (
+                (tid%M > 0    && matIn[tid-1] < 0) || // Vizinho esquerdo
+                (tid%M < M-1  && matIn[tid+1] < 0) || // Vizinho direito
+                (tid/M < N-1  && matIn[tid+M] < 0) || // Vizinho baixo
+                (tid/M > 0    && matIn[tid-M] < 0)    // Vizinho cima
+            ){
+                out_val = -1; // Contamina
+            }
+            // else: continua 1 (já definido em out_val)
+        } 
+        // Lógica de Heal
+        else if (in_val == -1) { // Infectado
+            unsigned int val = curand(&localState) % 10000;
+            if (val < 1000)
+                out_val = 1;     // Fica saudável
+            else if (val < 4000)
+                out_val = -1;    // Continua infectado
+            else
+                out_val = -2;    // Morre
+        } 
+        // Lógica de RemoveDead
+        else if (in_val == -2) { // Morto (frame 1)
+            out_val = -3;
+            atomicAdd(deaths, 1); // Conta a morte aqui
+        } 
+        else if (in_val == -3) { // Morto (frame 2)
+            out_val = 0; // Desaparece
+        }
+        
+        // Espera todas as threads terminarem de LER matIn
         __syncthreads();
-        if((N*M) % 2 == 0){
-            if(matP[tid] != 0)
-                atomicAdd(survivors, 1);
-        }
-        else{
-            if(matI[tid] != 0)
-                atomicAdd(survivors, 1);
-        }
+        
+        // Todas as threads escrevem o novo estado em matOut
+        matOut[tid] = out_val;
+        
+        // Espera todas as threads terminarem de ESCREVER em matOut
         __syncthreads();
+        
+        // Inverte a paridade
+        parity = 1 - parity;
+    }
+    
+    // --- Problema 3: Corrigido - Contagem de sobreviventes DEPOIS do loop ---
+
+    // Garante que a última iteração terminou para todas as threads
+    __syncthreads();
+
+    // Apenas a thread 0 zera o contador de sobreviventes
+    if (tid == 0) {
+        *survivors = 0;
+    }
+    
+    // Garante que o contador foi zerado
+    __syncthreads();
+
+    // O ponteiro matIn agora aponta para a matriz final (devido à última troca de paridade)
+    if (matIn[tid] > 0) { // Conta qualquer um que seja saudável (valor 1)
+        atomicAdd(survivors, 1);
     }
     
     // Salva o estado atualizado de volta
@@ -262,6 +280,8 @@ int main(void){
     cudaFree(d_matI);
     cudaFree(d_matP);
     cudaFree(d_states);
+    cudaFree(deaths);
+    cudaFree(survivors);
 
     return 0;
 }
