@@ -4,6 +4,16 @@
 #include <curand_kernel.h>
 #include <time.h>
 
+#define CUDA_CHECK(err)                                                      \
+    do {                                                                     \
+        cudaError_t err_ = (err);                                            \
+        if (err_ != cudaSuccess) {                                           \
+            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
+                    cudaGetErrorString(err_));                               \
+            exit(EXIT_FAILURE);                                              \
+        }                                                                    \
+    } while (0)
+
 // Kernel para inicializar os estados do cuRAND
 __global__ void setup_curand(curandState *state, unsigned long seed, int N, int M) {
     int tid = threadIdx.x;
@@ -15,6 +25,7 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
     
+    printf("Criando Threads\n");
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
@@ -26,6 +37,7 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
     int *matIn = matP;
     int *matOut = matI;
 
+    printf("Antes do laco for\n");
     for(int i=0; i<max_iter; i++){
         
         // Determina a matriz de entrada e saída para esta iteração
@@ -189,6 +201,7 @@ int main(void){
     unsigned long seed = (unsigned long)time(NULL);
     printf("Inicializando geradores aleatorios...\n");
     setup_curand<<<1, N*M>>>(d_states, seed, N, M);
+    CUDA_CHECK(cudaGetLastError());
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
         printf("Erro na inicializacao do cuRAND: %s\n", cudaGetErrorString(err));
@@ -198,6 +211,7 @@ int main(void){
     // Executa o kernel principal
     printf("Executando simulacao...\n");
     kernel<<<1, N*M>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+    CUDA_CHECK(cudaGetLastError());
 
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
