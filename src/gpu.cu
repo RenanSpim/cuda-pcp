@@ -14,14 +14,7 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
 }
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
-    // Inicializando contadores
-    if (threadIdx.x == 0) {
-        *deaths = 0;
-        *survivors = 0;
-    }
-
-    __syncthreads();
-
+    
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
@@ -109,7 +102,9 @@ int main(void){
     // Declarando variaveis de dimensoes
     int N, M;
     int *h_survivors = (int*)malloc(sizeof(int));
-    int *h_deaths = (int*)malloc(sizeof(int));
+    int *h_deaths = (int *)malloc(sizeof(int));
+    *h_survivors = 7;
+    *h_deaths = 7;
 
     // Abrindo arquivo da matriz de entrada
     FILE *fileInput = fopen("/home/mario/computaria/2sem-2025/pcp/cuda-pcp/src/matriz_inicial.txt", "r");
@@ -140,7 +135,7 @@ int main(void){
     // ----------------------------------------------------;
 
     // Declarando variaveis no device e alocando memória
-    int *d_matI, *d_matP, *deaths, *survivors;
+    int *d_matI, *d_matP, *d_deaths, *d_survivors;
     curandState *d_states;
     cudaError_t err;
 
@@ -154,12 +149,12 @@ int main(void){
         printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    err = cudaMalloc(&deaths, sizeof(int));
+    err = cudaMalloc(&d_deaths, sizeof(int));
     if(err != cudaSuccess){
         printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    err = cudaMalloc(&survivors, sizeof(int));
+    err = cudaMalloc(&d_survivors, sizeof(int));
     if(err != cudaSuccess){
         printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
         return 1;
@@ -179,6 +174,16 @@ int main(void){
         printf("Erro na copia de d_matP: %s\n", cudaGetErrorString(err));
         return 1;
     }
+    err = cudaMemset(d_deaths, 0, sizeof(int));
+    if(err != cudaSuccess){
+        printf("Erro no cudaMemset de deaths: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMemset(d_survivors, 0, sizeof(int));
+    if(err != cudaSuccess){ 
+        printf("Erro no cudaMemset de survivors: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
     
     // Inicializa os geradores de números aleatórios
     unsigned long seed = (unsigned long)time(NULL);
@@ -192,7 +197,7 @@ int main(void){
 
     // Executa o kernel principal
     printf("Executando simulacao...\n");
-    kernel<<<1, N*M>>>(d_matP, d_matI, deaths, survivors, N, M, N*M, d_states);
+    kernel<<<1, N*M>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
 
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
@@ -220,12 +225,12 @@ int main(void){
         }
     }
 
-    err = cudaMemcpy(h_survivors, survivors, sizeof(int), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_survivors, d_survivors, sizeof(int), cudaMemcpyDeviceToHost);
     if(err != cudaSuccess){
         printf("Erro na copia de sobreviventes: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    err = cudaMemcpy(h_deaths, deaths, sizeof(int), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_deaths, d_deaths, sizeof(int), cudaMemcpyDeviceToHost);
     if(err != cudaSuccess){
         printf("Erro na copia de mortes: %s\n", cudaGetErrorString(err));
         return 1;
@@ -246,8 +251,8 @@ int main(void){
     cudaFree(d_matI);
     cudaFree(d_matP);
     cudaFree(d_states);
-    cudaFree(deaths);
-    cudaFree(survivors);
+    cudaFree(d_deaths);
+    cudaFree(d_survivors);
 
     return 0;
 }
