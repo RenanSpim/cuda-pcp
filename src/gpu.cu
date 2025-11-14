@@ -25,7 +25,6 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
     
-    printf("Criando Threads\n");
     // Criando Threads
     int tid = threadIdx.x;
     if(tid >= N*M) return;
@@ -37,7 +36,6 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
     int *matIn = matP;
     int *matOut = matI;
 
-    printf("Antes do laco for\n");
     for(int i=0; i<max_iter; i++){
         
         // Determina a matriz de entrada e saída para esta iteração
@@ -119,7 +117,7 @@ int main(void){
     *h_deaths = 7;
 
     // Abrindo arquivo da matriz de entrada
-    FILE *fileInput = fopen("/home/mario/computaria/2sem-2025/pcp/cuda-pcp/src/matriz_inicial.txt", "r");
+    FILE *fileInput = fopen("../src/matriz_inicial.txt", "r");
     if(fileInput == NULL){
         printf("Erro ao abrir o arquivo de entrada.\n");
         return 1;
