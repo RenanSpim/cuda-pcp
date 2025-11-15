@@ -4,16 +4,6 @@
 #include <curand_kernel.h>
 #include <time.h>
 
-#define CUDA_CHECK(err)                                                      \
-    do {                                                                     \
-        cudaError_t err_ = (err);                                            \
-        if (err_ != cudaSuccess) {                                           \
-            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-                    cudaGetErrorString(err_));                               \
-            exit(EXIT_FAILURE);                                              \
-        }                                                                    \
-    } while (0)
-
 // Kernel para inicializar os estados do cuRAND
 __global__ void setup_curand(curandState *state, unsigned long seed, int N, int M) {
     int tid = threadIdx.x;
@@ -25,10 +15,12 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
     
-    printf("Criando Threads\n");
     // Criando Threads
-    int tid = threadIdx.x;
+    int tid = threadIdx.x, flag;
     if(tid >= N*M) return;
+    if(tid == 0){
+        flag = 0;
+    }
 
     // Estado local do gerador aleatório
     curandState localState = states[tid];
@@ -37,7 +29,6 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
     int *matIn = matP;
     int *matOut = matI;
 
-    printf("Antes do laco for\n");
     for(int i=0; i<max_iter; i++){
         
         // Determina a matriz de entrada e saída para esta iteração
@@ -94,6 +85,11 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
         // Espera todas as threads sincronizarem após escrever na matOut
         __syncthreads();
     }
+
+    if(matOut[tid] == 1 || matOut[tid] == -1){
+        atomicAdd(&flag, 1);
+    }
+
     // sincronizando a última iteração para todas as threads
     __syncthreads();
 
@@ -107,6 +103,9 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
 
     // Sincroniza antes de sair
     __syncthreads();
+    if(flag == 0){
+        return;
+    }
 }
 
 int main(void){
@@ -119,7 +118,7 @@ int main(void){
     *h_deaths = 7;
 
     // Abrindo arquivo da matriz de entrada
-    FILE *fileInput = fopen("/home/mario/computaria/2sem-2025/pcp/cuda-pcp/src/matriz_inicial.txt", "r");
+    FILE *fileInput = fopen("../src/matriz_inicial.txt", "r");
     if(fileInput == NULL){
         printf("Erro ao abrir o arquivo de entrada.\n");
         return 1;
@@ -201,23 +200,79 @@ int main(void){
     unsigned long seed = (unsigned long)time(NULL);
     printf("Inicializando geradores aleatorios...\n");
     setup_curand<<<1, N*M>>>(d_states, seed, N, M);
-    CUDA_CHECK(cudaGetLastError());
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
         printf("Erro na inicializacao do cuRAND: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
+    // Seção de coleta de dados para o teste
+    int resposta;
+    printf("Qual o modelo de teste que deseja executar?\n");
+    printf("2 - 1 Kernel em 1 bloco\n");
+    printf("3 - n kernels em 1 bloco\n");
+    printf("4 - n kernels em 2 bloco\n");
+    printf("5 - n kernels em 4 bloco\n");
+    printf("6 - n kernels em 8 bloco\n");
+    printf("7 - n kernels em n blocos (1 kernel por bloco)\n");
+    printf("8 - n kernels em n blocos (n/m kernel por bloco)\n");
+    printf("0 - SAIR\n");
+    scanf("%d", &resposta);
+
+    // Declarando variáveis para medição de tempo
+    struct timespec start, end;
+    double tempo_total;
+
     // Executa o kernel principal
     printf("Executando simulacao...\n");
-    kernel<<<1, N*M>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-    CUDA_CHECK(cudaGetLastError());
+    switch(resposta){
+        case 0:
+            printf("Saindo...\n");
+            return 0;
+        break;
+        case 2:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<1, 1>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 3:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<1, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 4:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<2, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 5:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<4, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 6:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<8, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 7:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<N, 1>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        case 8:
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            kernel<<<N, N/M>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
+        break;
+        deafault:
+            printf("Opcao invalida. Saindo...\n");
+            return 1;
+        break;
+    }
 
     err = cudaDeviceSynchronize();
     if(err != cudaSuccess){
         printf("Erro na execucao do kernel: %s\n", cudaGetErrorString(err));
         return 1;
     }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    tempo_total = (end.tv_sec - start.tv_sec);
+    tempo_total += (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 
     // Verifica onde o resultado final ficou baseado no número de iterações
     if((N*M) % 2 == 0){
