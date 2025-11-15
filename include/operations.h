@@ -23,8 +23,10 @@ void contaminate(int *mat, int x, int y) {
 }
 
 void removeDead(int *mat, int x, int y) {
-    if (mat[INDEX(x, y, M)] == -2)
+    if (mat[INDEX(x, y, M)] == -2) {
         mat[INDEX(x, y, M)] = -3;
+        qtdD++;
+    }
 
     if (mat[INDEX(x, y, M)] == -3)
         mat[INDEX(x, y, M)] = 0;

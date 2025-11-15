@@ -3,7 +3,7 @@
 #include <time.h>
 #include "operations.h"
 
-int N, M, *matI, *matP;
+int N, M, *matI, *matP, qtdT = 0, qtdD = 0;
 
 void contaminateAll(int x) {
     if (x % 2 == 0) {
@@ -55,7 +55,7 @@ void removeAllDead(int x) {
 
 int main(int argc, char *argv[]) {
     srand(time(NULL));
-    FILE *file;
+    FILE *file, *out;
     
     if (argc != 2) {
         printf("Usage: %s <filename>\n", argv[0]);
@@ -76,7 +76,14 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
-            fscanf(file, "%d", &matP[i * M + j]);
+            fscanf(file, "%d", &matP[INDEX(i, j, M)]);
+        }
+        
+        if (matP[INDEX(i, j, M)] != 0) {
+            qtdT++;
+        }
+        if (matP[INDEX(i, j, M)] == -2) {
+            qtdD++;
         }
     }
 
@@ -88,18 +95,28 @@ int main(int argc, char *argv[]) {
         if (i % 2 == 0) {
             for (int x = 0; x < N; x++) {
                 for (int y = 0; y < M; y++) {
-                    matI[x * M + y] = matP[x * M + y];
+                    matI[INDEX(x, y, M)] = matP[INDEX(x, y, M)];
                 }
             }
         } else {
             for (int x = 0; x < N; x++) {
                 for (int y = 0; y < M; y++) {
-                    matP[x * M + y] = matI[x * M + y];
+                    matP[INDEX(x, y, M)] = matI[INDEX(x, y, M)];
                 }
             }
         }
     }
+
+    out = fopen("infected_cpu.txt", "w");
+    
+    if (out == NULL) {
+        printf("Error opening output file.\n");
+        return 3;
+    }
+
+    fprintf(out, "Mortos: %d, Sobreviventes: %d\n", qtdD, qtdT - qtdD);
     
     fclose(file);
+    fclose(out);
     return 0;
 }

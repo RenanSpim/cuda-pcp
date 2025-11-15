@@ -256,10 +256,16 @@ int main(void){
         if((i+1)%M==0)
             printf("\n");
     }
+    
+    FILE *fileOutput = fopen("infected_gpu.txt", "w");
 
-    printf("Numéro de mortes: %d\n", *h_deaths);
-    printf("Numéro de sobreviventes: %d\n", *h_survivors);
-    // -----------------------------------------------------
+    if(fileOutput == NULL){
+        printf("Erro ao abrir o arquivo de saida.\n");
+        return 1;
+    }
+
+    fprintf(fileOutput, "Mortos: %d, Sobreviventes: %d\n", *h_deaths, *h_survivors);
+    fclose(fileOutput);
 
     // Libera memória do device
     cudaFree(d_matI);
