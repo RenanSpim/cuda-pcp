@@ -118,7 +118,7 @@ int main(void){
     *h_deaths = 7;
 
     // Abrindo arquivo da matriz de entrada
-    FILE *fileInput = fopen("/home/mario/computaria/2sem-2025/pcp/cuda-pcp/src/matriz_inicial.txt", "r");
+    FILE *fileInput = fopen("../src/matriz_inicial.txt", "r");
     if(fileInput == NULL){
         printf("Erro ao abrir o arquivo de entrada.\n");
         return 1;
