@@ -3,6 +3,9 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <time.h>
+#include <cooperative_groups.h>
+
+namespace cg = cooperative_groups;
 
 // Kernel para inicializar os estados do cuRAND
 __global__ void setup_curand(curandState *state, unsigned long seed, int N, int M) {
@@ -13,14 +16,14 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
     }
 }
 
-__global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states){
+__global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states, int *has_living, int *has_infected){
     
+    //sincronizando os blocos
+    cg::grid_group grid = cg::this_grid();
+
     // Criando Threads
-    int tid = threadIdx.x, flag;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if(tid >= N*M) return;
-    if(tid == 0){
-        flag = 0;
-    }
 
     // Estado local do gerador aleatório
     curandState localState = states[tid];
@@ -30,6 +33,12 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
     int *matOut = matI;
 
     for(int i=0; i<max_iter; i++){
+        
+        // Reseta os flags no início de cada iteração
+        if(tid == 0){
+            *has_living = 0;
+            *has_infected = 0;
+        }
         
         // Determina a matriz de entrada e saída para esta iteração
         int partiy  = i % 2;
@@ -41,8 +50,8 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
             matOut = matP;
         }
 
-        // Garante que todas as threads definiram seus ponteiros
-        __syncthreads(); 
+        // Sincroniza todos os blocos
+        grid.sync();
 
         // Atribui o valor atual da célula
         int in_val = matIn[tid];
@@ -65,33 +74,39 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
                 out_val = 1;     // Fica saudável
             else if (chance < 4000)
                 out_val = -1;    // Continua infectado
-            else
+            else{
                 out_val = -2;    // Morre
+                atomicAdd(deaths, 1);
+            }
         } // RemoveDead
         else if (in_val == -2) { // Morto (primeira iteracao
             out_val = -3;
-            atomicAdd(deaths, 1);
         } 
         else if (in_val == -3) { // Morto (segunda iteração)
             out_val = 0;
         }
         
-        // Espera todas as threads sincronizarem após a leitura da matIn
-        __syncthreads();
-        
         // Cada thread escreve na matOut
         matOut[tid] = out_val;
         
-        // Espera todas as threads sincronizarem após escrever na matOut
-        __syncthreads();
+        // Verifica se ainda há população viva (saudável ou infectada)
+        if (out_val == 1 || out_val == -1) {
+            atomicAdd(has_living, 1);
+        }
+        
+        // Verifica se ainda há infectados
+        if (out_val == -1) {
+            atomicAdd(has_infected, 1);
+        }
+        
+        // Sincroniza todos os blocos após escrever
+        grid.sync();
+        
+        // Para a simulação se não há mais população viva OU se não há mais infectados (todos curados)
+        if(*has_living == 0 || *has_infected == 0){
+            break;
+        }
     }
-
-    if(matOut[tid] == 1 || matOut[tid] == -1){
-        atomicAdd(&flag, 1);
-    }
-
-    // sincronizando a última iteração para todas as threads
-    __syncthreads();
 
     // Contagem de sobrevivente (infectados e saudáveis)
     if (matOut[tid] != 0 && matOut[tid] > -2) {
@@ -100,12 +115,6 @@ __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N,
     
     // Salva o estado atualizado de volta
     states[tid] = localState;
-
-    // Sincroniza antes de sair
-    __syncthreads();
-    if(flag == 0){
-        return;
-    }
 }
 
 int main(void){
@@ -146,7 +155,7 @@ int main(void){
     // ----------------------------------------------------;
 
     // Declarando variaveis no device e alocando memória
-    int *d_matI, *d_matP, *d_deaths, *d_survivors;
+    int *d_matI, *d_matP, *d_deaths, *d_survivors, *d_has_living, *d_has_infected;
     curandState *d_states;
     cudaError_t err;
 
@@ -162,12 +171,22 @@ int main(void){
     }
     err = cudaMalloc(&d_deaths, sizeof(int));
     if(err != cudaSuccess){
-        printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
+        printf("Erro de alocacao de memoria para d_deaths: %s\n", cudaGetErrorString(err));
         return 1;
     }
     err = cudaMalloc(&d_survivors, sizeof(int));
     if(err != cudaSuccess){
-        printf("Erro de alocacao de memoria para d_matP: %s\n", cudaGetErrorString(err));
+        printf("Erro de alocacao de memoria para d_survivors: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMalloc(&d_has_living, sizeof(int));
+    if(err != cudaSuccess){
+        printf("Erro de alocacao de memoria para d_has_living: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMalloc(&d_has_infected, sizeof(int));
+    if(err != cudaSuccess){
+        printf("Erro de alocacao de memoria para d_has_infected: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
@@ -193,6 +212,16 @@ int main(void){
     err = cudaMemset(d_survivors, 0, sizeof(int));
     if(err != cudaSuccess){ 
         printf("Erro no cudaMemset de survivors: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMemset(d_has_living, 0, sizeof(int));
+    if(err != cudaSuccess){ 
+        printf("Erro no cudaMemset de has_living: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    err = cudaMemset(d_has_infected, 0, sizeof(int));
+    if(err != cudaSuccess){ 
+        printf("Erro no cudaMemset de has_infected: %s\n", cudaGetErrorString(err));
         return 1;
     }
     
@@ -223,45 +252,77 @@ int main(void){
     struct timespec start, end;
     double tempo_total;
 
-    // Executa o kernel principal
-    printf("Executando simulacao...\n");
+    // Configuração para lançamento cooperativo
+    int numBlocks, threadsPerBlock;
+    
     switch(resposta){
         case 0:
             printf("Saindo...\n");
             return 0;
-        break;
         case 2:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<1, 1>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = 1;
+            threadsPerBlock = 1;
+            break;
         case 3:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<1, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = 1;
+            threadsPerBlock = N*M;
+            break;
         case 4:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<2, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = 2;
+            threadsPerBlock = (N*M)/2;
+            break;
         case 5:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<4, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = 4;
+            threadsPerBlock = (N*M)/4;
+            break;
         case 6:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<8, N>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = 8;
+            threadsPerBlock = (N*M)/8;
+            break;
         case 7:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<N, 1>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
+            numBlocks = N*M;
+            threadsPerBlock = 1;
+            break;
         case 8:
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            kernel<<<N, N/M>>>(d_matP, d_matI, d_deaths, d_survivors, N, M, N*M, d_states);
-        break;
-        deafault:
+            numBlocks = N;
+            threadsPerBlock = M;
+            break;
+        default:
             printf("Opcao invalida. Saindo...\n");
             return 1;
-        break;
+    }
+
+    // Preparar argumentos do kernel
+    int max_iterations = N*M;
+    void *kernelArgs[] = {
+        (void*)&d_matP,
+        (void*)&d_matI,
+        (void*)&d_deaths,
+        (void*)&d_survivors,
+        (void*)&N,
+        (void*)&M,
+        (void*)&max_iterations,
+        (void*)&d_states,
+        (void*)&d_has_living,
+        (void*)&d_has_infected
+    };
+
+    // Executar o kernel cooperativo
+    printf("Executando simulacao com %d blocos e %d threads por bloco...\n", numBlocks, threadsPerBlock);
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    
+    err = cudaLaunchCooperativeKernel(
+        (void*)kernel,
+        dim3(numBlocks),
+        dim3(threadsPerBlock),
+        kernelArgs,
+        0,
+        NULL
+    );
+    
+    if(err != cudaSuccess){
+        printf("Erro no lancamento cooperativo do kernel: %s\n", cudaGetErrorString(err));
+        return 1;
     }
 
     err = cudaDeviceSynchronize();
@@ -328,6 +389,8 @@ int main(void){
     cudaFree(d_states);
     cudaFree(d_deaths);
     cudaFree(d_survivors);
+    cudaFree(d_has_living);
+    cudaFree(d_has_infected);
 
     return 0;
 }
