@@ -16,6 +16,109 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
     }
 }
 
+__global__ void kernel_1thread(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states, int *has_living, int *has_infected){
+    
+    //sincronizando os blocos
+    cg::grid_group grid = cg::this_grid();
+
+    int tid=0;
+
+    // Estado local do gerador aleatório
+    curandState localState = states[0];
+
+    // Ponteiros para matriz de entrada e saída
+    int *matIn = matP;
+    int *matOut = matI;
+
+    for(int i=0; i<max_iter; i++){
+        for(int j=0; j<N*M; j++){
+            
+            tid = j;
+
+            // Reseta os flags no início de cada iteração
+            if(tid == 0){
+                *has_living = 0;
+                *has_infected = 0;
+            }
+            
+            // Determina a matriz de entrada e saída para esta iteração
+            int partiy  = i % 2;
+            if (partiy == 0) {
+                matIn = matP;
+                matOut = matI;
+            } else {
+                matIn = matI;
+                matOut = matP;
+            }
+
+            // Sincroniza todos os blocos
+            grid.sync();
+
+            // Atribui o valor atual da célula
+            int in_val = matIn[tid];
+            int out_val = in_val;
+
+            // Contaminate
+            if (in_val == 1) { // Saudável
+                if (
+                    (tid%M > 0    && matIn[tid-1] < 0) || // Vizinho esquerdo
+                    (tid%M < M-1  && matIn[tid+1] < 0) || // Vizinho direito
+                    (tid/M < N-1  && matIn[tid+M] < 0) || // Vizinho baixo
+                    (tid/M > 0    && matIn[tid-M] < 0)    // Vizinho cima
+                ){
+                    out_val = -1; // Contamina
+                }
+            } // Heal
+            else if (in_val == -1) { // Infectado
+                unsigned int chance = curand(&localState)%10000;
+                if (chance < 1000)
+                    out_val = 1;     // Fica saudável
+                else if (chance < 4000)
+                    out_val = -1;    // Continua infectado
+                else{
+                    out_val = -2;    // Morre
+                    atomicAdd(deaths, 1);
+                }
+            } // RemoveDead
+            else if (in_val == -2) { // Morto (primeira iteracao
+                out_val = -3;
+            } 
+            else if (in_val == -3) { // Morto (segunda iteração)
+                out_val = 0;
+            }
+            
+            // Cada thread escreve na matOut
+            matOut[tid] = out_val;
+            
+            // Verifica se ainda há população viva (saudável ou infectada)
+            if (out_val == 1 || out_val == -1) {
+                atomicAdd(has_living, 1);
+            }
+            
+            // Verifica se ainda há infectados
+            if (out_val == -1) {
+                atomicAdd(has_infected, 1);
+            }
+            
+            // Sincroniza todos os blocos após escrever
+            grid.sync();
+            
+            // Para a simulação se não há mais população viva OU se não há mais infectados (todos curados)
+            if(*has_living == 0 || *has_infected == 0){
+                break;
+            }
+        }
+    }
+
+    // Contagem de sobrevivente (infectados e saudáveis)
+    if (matOut[tid] != 0 && matOut[tid] > -2) {
+        atomicAdd(survivors, 1);
+    }
+    
+    // Salva o estado atualizado de volta
+    states[tid] = localState;
+}
+
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states, int *has_living, int *has_infected){
     
     //sincronizando os blocos
@@ -311,14 +414,26 @@ int main(void){
     printf("Executando simulacao com %d blocos e %d threads por bloco...\n", numBlocks, threadsPerBlock);
     clock_gettime(CLOCK_MONOTONIC, &start);
     
-    err = cudaLaunchCooperativeKernel(
+    if(resposta == 2){
+        err = cudaLaunchCooperativeKernel(
+            (void*)kernel_1thread,
+            dim3(numBlocks),
+            dim3(threadsPerBlock),
+            kernelArgs,
+            0,
+            NULL
+        );
+    }
+    else{
+        err = cudaLaunchCooperativeKernel(
         (void*)kernel,
         dim3(numBlocks),
         dim3(threadsPerBlock),
         kernelArgs,
         0,
         NULL
-    );
+        );
+    }
     
     if(err != cudaSuccess){
         printf("Erro no lancamento cooperativo do kernel: %s\n", cudaGetErrorString(err));
