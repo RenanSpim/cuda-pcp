@@ -2,8 +2,8 @@
 
 Configuracao:
   Dimensoes: 10 x 20
-  Tempo de execucao: 0.002023 segundos
+  Tempo de execucao: 0.001981 segundos
 
 Estatisticas:
-  Mortos: 10
-  Sobreviventes: 23
+  Mortos: 12
+  Sobreviventes: 21

@@ -4,7 +4,7 @@ Configuracao:
   Dimensoes: 10 x 20
   Blocos: 10
   Threads por bloco: 20
-  Tempo de execucao: 0.000167 segundos
+  Tempo de execucao: 0.000434 segundos
 
 Estatisticas:
   Populacao Inicial: 33
