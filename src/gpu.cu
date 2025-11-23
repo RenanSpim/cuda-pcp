@@ -500,7 +500,7 @@ int main(void){
     
     char buffer[50];
     sprintf(buffer, "%d x %d", N, M);
-    print_table_line("Dimensoes da Matriz do Bloco", buffer);
+    print_table_line("Dimensoes da Matriz", buffer);
     
     sprintf(buffer, "%d", N*M);
     print_table_line("Tamanho Total", buffer);
