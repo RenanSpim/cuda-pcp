@@ -7,6 +7,15 @@
 
 namespace cg = cooperative_groups;
 
+// Função para imprimir uma linha da tabela
+void print_table_line(const char* label, const char* value) {
+    printf("| %-25s | %-30s |\n", label, value);
+}
+
+void print_table_separator() {
+    printf("+---------------------------+--------------------------------+\n");
+}
+
 // Kernel para inicializar os estados do cuRAND
 __global__ void setup_curand(curandState *state, unsigned long seed, int N, int M) {
     int tid = threadIdx.x;
@@ -18,11 +27,6 @@ __global__ void setup_curand(curandState *state, unsigned long seed, int N, int 
 
 __global__ void kernel_1thread(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states, int *has_living, int *has_infected){
     
-    //sincronizando os blocos
-    cg::grid_group grid = cg::this_grid();
-
-    int tid=0;
-
     // Estado local do gerador aleatório
     curandState localState = states[0];
 
@@ -31,29 +35,23 @@ __global__ void kernel_1thread(int *matP, int *matI, int *deaths, int *survivors
     int *matOut = matI;
 
     for(int i=0; i<max_iter; i++){
-        for(int j=0; j<N*M; j++){
+        // Reseta os flags no início de cada iteração
+        *has_living = 0;
+        *has_infected = 0;
+        
+        // Determina a matriz de entrada e saída para esta iteração
+        int parity = i % 2;
+        if (parity == 0) {
+            matIn = matP;
+            matOut = matI;
+        } else {
+            matIn = matI;
+            matOut = matP;
+        }
+
+        // Processa todas as células
+        for(int tid=0; tid<N*M; tid++){
             
-            tid = j;
-
-            // Reseta os flags no início de cada iteração
-            if(tid == 0){
-                *has_living = 0;
-                *has_infected = 0;
-            }
-            
-            // Determina a matriz de entrada e saída para esta iteração
-            int partiy  = i % 2;
-            if (partiy == 0) {
-                matIn = matP;
-                matOut = matI;
-            } else {
-                matIn = matI;
-                matOut = matP;
-            }
-
-            // Sincroniza todos os blocos
-            grid.sync();
-
             // Atribui o valor atual da célula
             int in_val = matIn[tid];
             int out_val = in_val;
@@ -77,7 +75,7 @@ __global__ void kernel_1thread(int *matP, int *matI, int *deaths, int *survivors
                     out_val = -1;    // Continua infectado
                 else{
                     out_val = -2;    // Morre
-                    atomicAdd(deaths, 1);
+                    (*deaths)++;
                 }
             } // RemoveDead
             else if (in_val == -2) { // Morto (primeira iteracao
@@ -87,36 +85,35 @@ __global__ void kernel_1thread(int *matP, int *matI, int *deaths, int *survivors
                 out_val = 0;
             }
             
-            // Cada thread escreve na matOut
+            // Escreve na matOut
             matOut[tid] = out_val;
             
             // Verifica se ainda há população viva (saudável ou infectada)
             if (out_val == 1 || out_val == -1) {
-                atomicAdd(has_living, 1);
+                (*has_living)++;
             }
             
             // Verifica se ainda há infectados
             if (out_val == -1) {
-                atomicAdd(has_infected, 1);
+                (*has_infected)++;
             }
-            
-            // Sincroniza todos os blocos após escrever
-            grid.sync();
-            
-            // Para a simulação se não há mais população viva OU se não há mais infectados (todos curados)
-            if(*has_living == 0 || *has_infected == 0){
-                break;
-            }
+        }
+        
+        // Para a simulação se não há mais população viva OU se não há mais infectados (todos curados)
+        if(*has_living == 0 || *has_infected == 0){
+            break;
         }
     }
 
-    // Contagem de sobrevivente (infectados e saudáveis)
-    if (matOut[tid] != 0 && matOut[tid] > -2) {
-        atomicAdd(survivors, 1);
+    // Contagem de sobreviventes (infectados e saudáveis)
+    for(int tid=0; tid<N*M; tid++){
+        if (matOut[tid] != 0 && matOut[tid] > -2) {
+            (*survivors)++;
+        }
     }
     
     // Salva o estado atualizado de volta
-    states[tid] = localState;
+    states[0] = localState;
 }
 
 __global__ void kernel(int *matP, int *matI, int *deaths, int *survivors, int N, int M, int max_iter, curandState *states, int *has_living, int *has_infected){
@@ -230,7 +227,7 @@ int main(void){
     *h_deaths = 7;
 
     // Abrindo arquivo da matriz de entrada
-    FILE *fileInput = fopen("../src/matriz_inicial.txt", "r");
+    FILE *fileInput = fopen("data/matriz_inicial.txt", "r");
     if(fileInput == NULL){
         printf("Erro ao abrir o arquivo de entrada.\n");
         return 1;
@@ -449,10 +446,12 @@ int main(void){
     clock_gettime(CLOCK_MONOTONIC, &end);
     tempo_total = (end.tv_sec - start.tv_sec);
     tempo_total += (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+    
+    printf("\n=== Simulacao concluida com sucesso! ===\n");
+    printf("Tempo de execucao: %.6f segundos\n\n", tempo_total);
 
     // Verifica onde o resultado final ficou baseado no número de iterações
     if((N*M) % 2 == 0){
-        printf("ENTROU NA PAR\n");
         // Número par de iterações: resultado em matP
         err = cudaMemcpy(h_matP, d_matP, N*M*sizeof(int), cudaMemcpyDeviceToHost);
         if(err != cudaSuccess){
@@ -461,7 +460,6 @@ int main(void){
         }
     }
     else{
-        printf("ENTROU NA IMPAR\n");
         // Número ímpar de iterações: resultado em matI
         err = cudaMemcpy(h_matP, d_matI, N*M*sizeof(int), cudaMemcpyDeviceToHost);
         if(err != cudaSuccess){
@@ -481,13 +479,76 @@ int main(void){
         return 1;
     }
 
+    // Contagem de população final por estado
+    int saudaveis = 0, infectados = 0, mortos_recentes = 0, espacos_vazios = 0;
+    for(int i=0; i<N*M; i++){
+        if(h_matP[i] == 1) saudaveis++;
+        else if(h_matP[i] == -1) infectados++;
+        else if(h_matP[i] == -2 || h_matP[i] == -3) mortos_recentes++;
+        else if(h_matP[i] == 0) espacos_vazios++;
+    }
+    
+    int populacao_inicial = saudaveis + infectados + *h_deaths;
+    double taxa_mortalidade = (populacao_inicial > 0) ? (100.0 * (*h_deaths) / populacao_inicial) : 0.0;
+    double taxa_sobrevivencia = (populacao_inicial > 0) ? (100.0 * (*h_survivors) / populacao_inicial) : 0.0;
+    
+    // Exibir tabela de resultados
+    printf("\n");
+    print_table_separator();
+    printf("|     RESULTADOS DA SIMULACAO - GPU                          |\n");
+    print_table_separator();
+    
+    char buffer[50];
+    sprintf(buffer, "%d x %d", N, M);
+    print_table_line("Dimensoes da Matriz do Bloco", buffer);
+    
+    sprintf(buffer, "%d", N*M);
+    print_table_line("Tamanho Total", buffer);
+    
+    sprintf(buffer, "%d blocos x %d threads", numBlocks, threadsPerBlock);
+    print_table_line("Configuracao GPU", buffer);
+    
+    sprintf(buffer, "%.6f segundos", tempo_total);
+    print_table_line("Tempo de Execucao", buffer);
+    
+    
+    print_table_separator();
+    printf("|     ESTATISTICAS DA POPULACAO                              |\n");
+    print_table_separator();
+    
+    sprintf(buffer, "%d", populacao_inicial);
+    print_table_line("Populacao Inicial", buffer);
+    
+    sprintf(buffer, "%d", *h_survivors);
+    print_table_line("Sobreviventes", buffer);
+    
+    sprintf(buffer, "%d", saudaveis);
+    print_table_line("  - Saudaveis", buffer);
+    
+    sprintf(buffer, "%d", infectados);
+    print_table_line("  - Infectados", buffer);
+    
+    sprintf(buffer, "%d", *h_deaths);
+    print_table_line("Mortes", buffer);
+    
+    sprintf(buffer, "%.2f%%", taxa_mortalidade);
+    print_table_line("Taxa de Mortalidade", buffer);
+    
+    sprintf(buffer, "%.2f%%", taxa_sobrevivencia);
+    print_table_line("Taxa de Sobrevivencia", buffer);
+    
+    print_table_separator();
+    
     // Printando a matriz final (DEBUG)
+    printf("\nMatriz Final:\n");
     for(int i=0;i<N*M;i++){
         printf("\t[%d] ", h_matP[i]);
         if((i+1)%M==0)
             printf("\n");
     }
+    printf("\n");
     
+    // Salvar resultados em arquivo
     FILE *fileOutput = fopen("infected_gpu.txt", "w");
 
     if(fileOutput == NULL){
@@ -495,10 +556,23 @@ int main(void){
         return 1;
     }
 
-    fprintf(fileOutput, "Mortos: %d, Sobreviventes: %d\n", *h_deaths, *h_survivors);
+    fprintf(fileOutput, "=== RESULTADOS DA SIMULACAO - GPU ===\n\n");
+    fprintf(fileOutput, "Configuracao:\n");
+    fprintf(fileOutput, "  Dimensoes: %d x %d\n", N, M);
+    fprintf(fileOutput, "  Blocos: %d\n", numBlocks);
+    fprintf(fileOutput, "  Threads por bloco: %d\n", threadsPerBlock);
+    fprintf(fileOutput, "  Tempo de execucao: %.6f segundos\n\n", tempo_total);
+    fprintf(fileOutput, "Estatisticas:\n");
+    fprintf(fileOutput, "  Populacao Inicial: %d\n", populacao_inicial);
+    fprintf(fileOutput, "  Sobreviventes: %d\n", *h_survivors);
+    fprintf(fileOutput, "    - Saudaveis: %d\n", saudaveis);
+    fprintf(fileOutput, "    - Infectados: %d\n", infectados);
+    fprintf(fileOutput, "  Mortos: %d\n", *h_deaths);
+    fprintf(fileOutput, "  Taxa de Mortalidade: %.2f%%\n", taxa_mortalidade);
+    fprintf(fileOutput, "  Taxa de Sobrevivencia: %.2f%%\n", taxa_sobrevivencia);
     fclose(fileOutput);
 
-    // Libera memória do device
+    printf("Resultados salvos em 'results/infected_gpu.txt'\n");    // Libera memória do device
     cudaFree(d_matI);
     cudaFree(d_matP);
     cudaFree(d_states);

@@ -1,9 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "operations.h"
+
+#define INDEX(i, j, M) ((i) * (M) + (j))
 
 int N, M, *matI, *matP, qtdT = 0, qtdD = 0;
+
+void heal(int *mat, int x, int y) {
+    int val = rand() % 10000;
+
+    if (mat[INDEX(x, y, M)] == -1)
+        mat[INDEX(x, y, M)] = val < 1000 ? 1 : val < 4000 ? -1 : -2;
+}
+
+void contaminate(int *mat, int x, int y) {
+    if (mat[INDEX(x, y, M)] != 1) return;
+
+    if (
+        (x > 0       && mat[(x-1) * M + y] < 0) ||
+        (x < (N - 1) && mat[(x+1) * M + y] < 0) ||
+        (y > 0       && mat[x * M + (y-1)] < 0) ||
+        (y < (M - 1) && mat[x * M + (y+1)] < 0)
+    ) {
+        mat[INDEX(x, y, M)] = -1;
+    }
+}
+
+void removeDead(int *mat, int x, int y) {
+    if (mat[INDEX(x, y, M)] == -2) {
+        mat[INDEX(x, y, M)] = -3;
+        qtdD++;
+    }
+}
 
 void contaminateAll(int x) {
     if (x % 2 == 0) {
@@ -56,6 +84,8 @@ void removeAllDead(int x) {
 int main(int argc, char *argv[]) {
     srand(time(NULL));
     FILE *file, *out;
+    clock_t start, end;
+    double cpu_time_used;
     
     if (argc != 2) {
         printf("Usage: %s <filename>\n", argv[0]);
@@ -77,16 +107,18 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
             fscanf(file, "%d", &matP[INDEX(i, j, M)]);
-        }
-        
-        if (matP[INDEX(i, j, M)] != 0) {
-            qtdT++;
-        }
-        if (matP[INDEX(i, j, M)] == -2) {
-            qtdD++;
+            
+            if (matP[INDEX(i, j, M)] != 0) {
+                qtdT++;
+            }
+            if (matP[INDEX(i, j, M)] == -2) {
+                qtdD++;
+            }
         }
     }
 
+    start = clock();
+    
     for (int i = 0; i < N*M; i++) {
         contaminateAll(i);
         healAll(i);
@@ -107,14 +139,26 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    out = fopen("infected_cpu.txt", "w");
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+
+    out = fopen("results/infected_cpu.txt", "w");
     
     if (out == NULL) {
         printf("Error opening output file.\n");
         return 3;
     }
 
-    fprintf(out, "Mortos: %d, Sobreviventes: %d\n", qtdD, qtdT - qtdD);
+    fprintf(out, "=== RESULTADOS DA SIMULACAO - CPU ===\n\n");
+    fprintf(out, "Configuracao:\n");
+    fprintf(out, "  Dimensoes: %d x %d\n", N, M);
+    fprintf(out, "  Tempo de execucao: %.6f segundos\n\n", cpu_time_used);
+    fprintf(out, "Estatisticas:\n");
+    fprintf(out, "  Mortos: %d\n", qtdD);
+    fprintf(out, "  Sobreviventes: %d\n", qtdT - qtdD);
+    
+    printf("\n=== Simulacao CPU concluida ===\n");
+    printf("Tempo de execucao: %.6f segundos\n", cpu_time_used);
     
     fclose(file);
     fclose(out);

@@ -3,16 +3,43 @@
 
 ---
 
-### 1. Definição do Problema
+## 1. Estrutura do Projeto
+
+```
+cuda-pcp/
+├── bin/                      # Executáveis compilados
+│   ├── cpu                   # Executável da versão CPU
+│   └── gpu                   # Executável da versão GPU
+├── data/                     # Dados de entrada
+│   └── matriz_inicial.txt    # Matriz inicial da simulação
+├── results/                  # Resultados das execuções
+│   ├── infected_cpu.txt      # Resultado da versão CPU
+│   ├── infected_gpu.txt      # Resultado da versão GPU
+│   └── resultados_medias.txt # Comparativo de desempenho
+├── src/                      # Códigos-fonte
+│   ├── cpu.cu                # Implementação CPU
+│   └── gpu.cu                # Implementação GPU (CUDA)
+├── test_all.sh               # Script de teste automatizado
+└── README.md                 # Este arquivo
+```
+
+---
+
+## 2. Definição do Problema
 
 Simulação de uma doença contagiosa em uma região retangular NxM.
-Estados da matriz:
+
+### Estados da Matriz
 * `1`: Pessoa Saudável
 * `-1`: Pessoa Contaminada
 * `-2`: Pessoa Morta
 * `0`: Ninguém
 
-### 2. Regras da Simulação (Por Iteração)
+---
+
+## 3. Regras da Simulação
+
+A cada iteração, as seguintes regras são aplicadas:
 
 1.  **Contaminação:**
     * `Saudável (1)` é contaminado se tiver vizinho (horizontal/vertical) `Contaminado (-1)` ou `Morto (-2)`.
@@ -29,35 +56,113 @@ Estados da matriz:
 4.  **Fim:**
     * Após `N * M` iterações ou quando não houver mais pessoas (saudáveis ou contaminadas).
 
-### 3. O que deve ser feito
+---
 
-Implementar uma versão para **CPU** e uma para **GPU (CUDA)**. A simulação aplica as regras em uma matriz `i` para gerar a matriz `i+1`.
+## 4. Como Usar
 
-#### 3.1 Entrada
+### Compilação Manual
 
-Arquivo único:
-* Linha 1: `N` e `M` (inteiros)
-* N Linhas seguintes: M inteiros (estado inicial)
+```bash
+# Compilar versão CPU
+nvcc -o bin/cpu src/cpu.cu
 
-#### 3.2 Saída
+# Compilar versão GPU
+nvcc -o bin/gpu src/gpu.cu -arch=sm_75
+```
 
-Arquivo único:
-* Total de mortos e total de sobreviventes (contaminados + saudáveis).
+### Execução Manual
 
-### 4. Condições de Teste (Medir tempo médio de 3 execuções)
+```bash
+# Executar versão CPU
+./bin/cpu data/matriz_inicial.txt
 
-1.  Apenas CPU (sem GPU).
-2.  GPU: 1 kernel em 1 bloco.
-3.  GPU: N kernels em 1 bloco.
-4.  GPU: N kernels em 2 blocos.
-5.  GPU: N kernels em 4 blocos.
-6.  GPU: N kernels em 8 blocos.
-7.  GPU: N kernels em N blocos (1 kernel/bloco).
-8.  GPU: N kernels em M blocos (N/M kernels/bloco).
+# Executar versão GPU
+./bin/gpu
+# (Selecione o caso de teste no menu interativo)
+```
 
-### 5. Entregáveis
+### Teste Automatizado
 
-* Códigos-fonte (CPU e GPU).
-* Relatório comparativo dos testes.
+O script `test_all.sh` compila e testa todos os casos automaticamente, calculando médias de 3 execuções:
 
-**Data de Entrega:** 24/11/2025
+```bash
+./test_all.sh
+```
+
+**O que o script faz:**
+- Compila as versões CPU e GPU
+- Executa a versão CPU 3 vezes e calcula a média
+- Executa todos os casos GPU (2-8) 3 vezes cada
+- Calcula speedup e diferença percentual em relação à CPU
+- Gera relatório completo em `results/resultados_medias.txt`
+
+---
+
+## 📊 Casos de Teste
+
+O sistema suporta os seguintes casos de teste:
+
+| Caso | Descrição |
+|------|-----------|
+| 1 | CPU (baseline) |
+| 2 | GPU: 1 kernel em 1 bloco |
+| 3 | GPU: n kernels em 1 bloco |
+| 4 | GPU: n kernels em 2 blocos |
+| 5 | GPU: n kernels em 4 blocos |
+| 6 | GPU: n kernels em 8 blocos |
+| 7 | GPU: n kernels em n blocos (1 kernel/bloco) |
+| 8 | GPU: n kernels em m blocos (n/m kernels/bloco) |
+
+---
+
+## 5. Formato de Entrada
+
+Arquivo de entrada (`data/matriz_inicial.txt`):
+* **Linha 1:** `N` e `M` (dimensões da matriz - inteiros)
+* **N linhas seguintes:** M inteiros separados por espaço (estado inicial de cada célula)
+
+**Exemplo:**
+```
+10 20
+1 1 0 0 -1 0 0 ...
+0 1 1 0 0 0 1 ...
+...
+```
+
+---
+
+## 6. Formato de Saída
+
+Os arquivos de saída contêm:
+* Configuração da simulação (dimensões, tempo de execução)
+* Estatísticas da população:
+  - População inicial
+  - Sobreviventes (saudáveis + infectados)
+  - Mortos
+  - Taxa de mortalidade
+  - Taxa de sobrevivência
+
+**Arquivos gerados:**
+* `results/infected_cpu.txt` - Resultado da versão CPU
+* `results/infected_gpu.txt` - Resultado da versão GPU
+* `results/resultados_medias.txt` - Comparativo de desempenho
+
+---
+
+## 7. Métricas de Desempenho
+
+O script de teste calcula:
+* **Tempo médio** de execução (3 execuções)
+* **Speedup**: razão entre tempo CPU e tempo GPU
+* **Diferença percentual**: quanto mais rápido/lento em relação à CPU
+
+---
+
+## 8. Requisitos
+
+* CUDA Toolkit
+* GPU compatível com CUDA
+* Compilador nvcc
+* Sistema Linux/Unix com bash
+
+---
