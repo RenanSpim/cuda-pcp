@@ -77,13 +77,13 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
             fscanf(file, "%d", &matP[INDEX(i, j, M)]);
-        }
         
-        if (matP[INDEX(i, j, M)] != 0) {
-            qtdT++;
-        }
-        if (matP[INDEX(i, j, M)] == -2) {
-            qtdD++;
+            if (matP[INDEX(i, j, M)] != 0) {
+                qtdT++;
+            }
+            if (matP[INDEX(i, j, M)] == -2) {
+                qtdD++;
+            }
         }
     }
 
@@ -120,3 +120,4 @@ int main(int argc, char *argv[]) {
     fclose(out);
     return 0;
 }
+
