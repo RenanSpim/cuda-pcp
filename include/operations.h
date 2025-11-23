@@ -1,5 +1,7 @@
 #include <stdlib.h>
 
+int N, M, *matI, *matP, qtdT = 0, qtdD = 0;
+
 #define INDEX(i, j, M) ((i) * (M) + (j))
 
 void heal(int *mat, int x, int y) {
