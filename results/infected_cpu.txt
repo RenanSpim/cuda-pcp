@@ -2,7 +2,7 @@
 
 Configuracao:
   Dimensoes: 10 x 20
-  Tempo de execucao: 0.000788 segundos
+  Tempo de execucao: 0.002023 segundos
 
 Estatisticas:
   Mortos: 10
