@@ -3,8 +3,6 @@
 #include <time.h>
 #include "operations.h"
 
-int N, M, *matI, *matP, qtdT = 0, qtdD = 0;
-
 void contaminateAll(int x) {
     if (x % 2 == 0) {
         for (int i = 0; i < N; i++) {
