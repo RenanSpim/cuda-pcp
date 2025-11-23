@@ -1,0 +1,58 @@
+=== RESULTADOS DAS MÉDIAS DE TEMPO ===
+Data: Sat Nov 22 22:59:35 -03 2025
+
+========================================
+TEMPO DE EXECUÇÃO - CPU
+========================================
+Execução 1: 0.000786 s
+Execução 2: 0.000795 s
+Execução 3: 0.000788 s
+Média CPU: .000789 s (.789000 ms)
+
+========================================
+COMPARAÇÃO GPU vs CPU
+========================================
+
++-----------------------------------------------------------------------------------------------------------+
+| Caso | Configuração                                  | Tempo Médio GPU | Speedup  | Diferença       |
++-----------------------------------------------------------------------------------------------------------+
+| 2    | 1 Kernel em 1 bloco                           |   0.000286 s    |    2.75x | 63.00% mais rápido |
+
+Caso 2 - 1 Kernel em 1 bloco
+  Execução 1: 0.000304 s
+  Execução 2: 0.000336 s
+  Execução 3: 0.000219 s
+  Média: .000286 s (.286000 ms)
+  Speedup: 2.75x
+  Diferença: 63.00% mais rápido
+
+| 3    | n kernels em 1 bloco                          |   0.000209 s    |    3.77x | 73.00% mais rápido |
+
+Caso 3 - n kernels em 1 bloco
+  Execução 1: 0.000150 s
+  Execução 2: 0.000307 s
+  Execução 3: 0.000170 s
+  Média: .000209 s (.209000 ms)
+  Speedup: 3.77x
+  Diferença: 73.00% mais rápido
+
+| 4    | n kernels em 2 blocos                         |   0.000229 s    |    3.44x | 70.00% mais rápido |
+
+Caso 4 - n kernels em 2 blocos
+  Execução 1: 0.000161 s
+  Execução 2: 0.000384 s
+  Execução 3: 0.000143 s
+  Média: .000229 s (.229000 ms)
+  Speedup: 3.44x
+  Diferença: 70.00% mais rápido
+
+| 5    | n kernels em 4 blocos                         |   0.000240 s    |    3.28x | 69.00% mais rápido |
+
+Caso 5 - n kernels em 4 blocos
+  Execução 1: 0.000266 s
+  Execução 2: 0.000137 s
+  Execução 3: 0.000317 s
+  Média: .000240 s (.240000 ms)
+  Speedup: 3.28x
+  Diferença: 69.00% mais rápido
+

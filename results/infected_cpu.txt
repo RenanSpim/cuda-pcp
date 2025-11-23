@@ -1,0 +1,9 @@
+=== RESULTADOS DA SIMULACAO - CPU ===
+
+Configuracao:
+  Dimensoes: 10 x 20
+  Tempo de execucao: 0.000788 segundos
+
+Estatisticas:
+  Mortos: 10
+  Sobreviventes: 23

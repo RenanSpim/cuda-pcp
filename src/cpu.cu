@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "operations.h"
+
+#define INDEX(i, j, M) ((i) * (M) + (j))
 
 void contaminateAll(int x) {
     if (x % 2 == 0) {
@@ -54,6 +55,8 @@ void removeAllDead(int x) {
 int main(int argc, char *argv[]) {
     srand(time(NULL));
     FILE *file, *out;
+    clock_t start, end;
+    double cpu_time_used;
     
     if (argc != 2) {
         printf("Usage: %s <filename>\n", argv[0]);
@@ -75,16 +78,18 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
             fscanf(file, "%d", &matP[INDEX(i, j, M)]);
-        }
-        
-        if (matP[INDEX(i, j, M)] != 0) {
-            qtdT++;
-        }
-        if (matP[INDEX(i, j, M)] == -2) {
-            qtdD++;
+            
+            if (matP[INDEX(i, j, M)] != 0) {
+                qtdT++;
+            }
+            if (matP[INDEX(i, j, M)] == -2) {
+                qtdD++;
+            }
         }
     }
 
+    start = clock();
+    
     for (int i = 0; i < N*M; i++) {
         contaminateAll(i);
         healAll(i);
@@ -105,16 +110,29 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    out = fopen("infected_cpu.txt", "w");
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+
+    out = fopen("results/infected_cpu.txt", "w");
     
     if (out == NULL) {
         printf("Error opening output file.\n");
         return 3;
     }
 
-    fprintf(out, "Mortos: %d, Sobreviventes: %d\n", qtdD, qtdT - qtdD);
+    fprintf(out, "=== RESULTADOS DA SIMULACAO - CPU ===\n\n");
+    fprintf(out, "Configuracao:\n");
+    fprintf(out, "  Dimensoes: %d x %d\n", N, M);
+    fprintf(out, "  Tempo de execucao: %.6f segundos\n\n", cpu_time_used);
+    fprintf(out, "Estatisticas:\n");
+    fprintf(out, "  Mortos: %d\n", qtdD);
+    fprintf(out, "  Sobreviventes: %d\n", qtdT - qtdD);
+    
+    printf("\n=== Simulacao CPU concluida ===\n");
+    printf("Tempo de execucao: %.6f segundos\n", cpu_time_used);
     
     fclose(file);
     fclose(out);
     return 0;
 }
+

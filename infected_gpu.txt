@@ -1,0 +1,16 @@
+=== RESULTADOS DA SIMULACAO - GPU ===
+
+Configuracao:
+  Dimensoes: 10 x 20
+  Blocos: 10
+  Threads por bloco: 20
+  Tempo de execucao: 0.000167 segundos
+
+Estatisticas:
+  Populacao Inicial: 33
+  Sobreviventes: 23
+    - Saudaveis: 23
+    - Infectados: 0
+  Mortos: 10
+  Taxa de Mortalidade: 30.30%
+  Taxa de Sobrevivencia: 69.70%
