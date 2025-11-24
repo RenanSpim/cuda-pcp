@@ -32,9 +32,9 @@ echo ""
 soma_cpu=0
 tempos_cpu=()
 
-for exec in 1 2 3; do
+for exec in 1; do
     echo "Execução CPU $exec/3..."
-    output=$(./bin/cpu data/matriz_inicial.txt 2>&1)
+    output=$(./bin/cpu data/realdata.dat 2>&1)
     
     tempo=$(echo "$output" | grep -oP "Tempo de execucao: \K[0-9]+\.[0-9]+" | head -1)
     
@@ -60,7 +60,7 @@ casos=(2 3 4 5 6 7 8)
 nomes=("1 Kernel em 1 bloco" "n kernels em 1 bloco" "n kernels em 2 blocos" "n kernels em 4 blocos" "n kernels em 8 blocos" "n kernels em n blocos (1 kernel por bloco)" "n kernels em n blocos (n/m kernel por bloco)")
 
 # Arquivo de resultados
-resultado_file="results/resultados_medias.txt"
+resultado_file="results/resultados_medias_big_inp.txt"
 echo "=== RESULTADOS DAS MÉDIAS DE TEMPO ===" > $resultado_file
 echo "Data: $(date)" >> $resultado_file
 echo "" >> $resultado_file

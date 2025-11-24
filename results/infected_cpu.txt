@@ -1,9 +1,9 @@
-=== RESULTADOS DA SIMULACAO - CPU ===
+=== RESULTADOS DA SIMULACAO - CPU OTIMIZADO ===
 
 Configuracao:
-  Dimensoes: 10 x 20
-  Tempo de execucao: 0.000723 segundos
+  Dimensoes: 1024 x 1024
+  Tempo de execucao: 1853.006982 segundos
 
 Estatisticas:
-  Mortos: 10
-  Sobreviventes: 23
+  Mortos: 457637
+  Sobreviventes: 15943
