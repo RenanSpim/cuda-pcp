@@ -51,11 +51,13 @@ int main(int argc, char *argv[]) {
 
     start = clock();
 
-    int total_cells = N * M;
-    int generations = total_cells;
+    int max_generations = N + M;
 
-    for (int gen = 0; gen < generations; gen++) {
+    for (int gen = 0; gen < max_generations; gen++) {
         
+        if (qtdD >= qtdT) break; // Todos morreram
+        
+        int changes = 0;
         int *ptr = mat; 
         
         for (int i = 0; i < N; i++) {
@@ -76,6 +78,7 @@ int main(int argc, char *argv[]) {
                     if (infected) {
                         *ptr = -1;
                         current_val = -1;
+                        changes++;
                     }
                 }
 
@@ -87,18 +90,23 @@ int main(int argc, char *argv[]) {
                     else *ptr = -2;
                     
                     current_val = *ptr;
+                    changes++;
                 }
 
                 if (current_val == -2) {
                     *ptr = -3;
                     qtdD++;
+                    changes++;
                 } else if (current_val == -3) {
                     *ptr = 0;
+                    changes++;
                 }
 
                 ptr++;
             }
         }
+        
+        if (changes == 0) break; // Nada mudou, simulação estabilizou
     }
 
     end = clock();

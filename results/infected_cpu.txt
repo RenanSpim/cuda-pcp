@@ -2,8 +2,8 @@
 
 Configuracao:
   Dimensoes: 1024 x 1024
-  Tempo de execucao: 1853.006982 segundos
+  Tempo de execucao: 0.044736 segundos
 
 Estatisticas:
-  Mortos: 457637
-  Sobreviventes: 15943
+  Mortos: 457956
+  Sobreviventes: 15624

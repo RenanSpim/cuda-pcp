@@ -4,13 +4,13 @@ Configuracao:
   Dimensoes: 10 x 20
   Blocos: 10
   Threads por bloco: 20
-  Tempo de execucao: 0.000090 segundos
+  Tempo de execucao: 0.000125 segundos
 
 Estatisticas:
-  Populacao Inicial: 35
-  Sobreviventes: 23
-    - Saudaveis: 23
-    - Infectados: 2
-  Mortos: 10
-  Taxa de Mortalidade: 28.57%
-  Taxa de Sobrevivencia: 65.71%
+  Populacao Inicial: 33
+  Sobreviventes: 22
+    - Saudaveis: 22
+    - Infectados: 0
+  Mortos: 11
+  Taxa de Mortalidade: 33.33%
+  Taxa de Sobrevivencia: 66.67%
